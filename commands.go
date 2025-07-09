@@ -114,6 +114,42 @@ func handlerAgg(s *state, cmd command) error {
 	return nil
 }
 
+func handlerAddfeed(s *state, cmd command) error {
+	if len(cmd.args) < 2 {
+		return fmt.Errorf("usage: addfeed <name> <url>")
+	}
+
+	name := cmd.args[0]
+	url := cmd.args[1]
+
+	if s.cfg.CurrentUserName == "" {
+		return fmt.Errorf("no user logged in")
+	}
+	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+
+	params := database.CreateFeedParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      name,
+		Url:       url,
+		UserID:    user.ID,
+	}
+
+	feed, err := s.db.CreateFeed(context.Background(), params)
+
+	if err != nil {
+		return fmt.Errorf("can't create feed database: %w", err)
+	}
+
+	fmt.Printf("%+v\n", feed)
+
+	return nil
+}
+
 type commands struct {
 	handlers map[string]func(*state, command) error
 }
