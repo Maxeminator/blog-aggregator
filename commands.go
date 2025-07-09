@@ -78,6 +78,42 @@ func handlerRegister(s *state, cmd command) error {
 	return nil
 }
 
+func handlerReset(s *state, cmd command) error {
+	err := s.db.ResetUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to reset database %w", err)
+	}
+	fmt.Println("reset complete")
+	return nil
+}
+
+func handlerUsers(s *state, cmd command) error {
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to check users %w", err)
+
+	}
+	for _, user := range users {
+		name := user.Name
+		if name == s.cfg.CurrentUserName {
+			fmt.Printf("* %s (current)\n", name)
+		} else {
+			fmt.Printf("* %s\n", name)
+		}
+	}
+	return nil
+}
+
+func handlerAgg(s *state, cmd command) error {
+	ctx := context.Background()
+	feed, err := fetchFeed(ctx, "https://www.wagslane.dev/index.xml")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%+v\n", feed)
+	return nil
+}
+
 type commands struct {
 	handlers map[string]func(*state, command) error
 }
