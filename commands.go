@@ -78,7 +78,7 @@ func handlerRegister(s *state, cmd command) error {
 	return nil
 }
 
-func handlerReset(s *state, cmd command) error {
+func handlerReset(s *state, cmd command, user database.User) error {
 	err := s.db.ResetUsers(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to reset database %w", err)
@@ -87,7 +87,7 @@ func handlerReset(s *state, cmd command) error {
 	return nil
 }
 
-func handlerUsers(s *state, cmd command) error {
+func handlerUsers(s *state, cmd command, user database.User) error {
 	users, err := s.db.GetUsers(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to check users %w", err)
@@ -104,7 +104,7 @@ func handlerUsers(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAgg(s *state, cmd command) error {
+func handlerAgg(s *state, cmd command, user database.User) error {
 	ctx := context.Background()
 	feed, err := fetchFeed(ctx, "https://www.wagslane.dev/index.xml")
 	if err != nil {
@@ -114,7 +114,7 @@ func handlerAgg(s *state, cmd command) error {
 	return nil
 }
 
-func handlerAddfeed(s *state, cmd command) error {
+func handlerAddfeed(s *state, cmd command, user database.User) error {
 	if len(cmd.args) < 2 {
 		return fmt.Errorf("usage: addfeed <name> <url>")
 	}
@@ -164,7 +164,7 @@ func handlerAddfeed(s *state, cmd command) error {
 
 }
 
-func handlerFeeds(s *state, cmd command) error {
+func handlerFeeds(s *state, cmd command, user database.User) error {
 	feeds, err := s.db.ListFeedsWithUsers(context.Background())
 	if err != nil {
 		return fmt.Errorf("can't read the feed %w", err)
@@ -175,7 +175,7 @@ func handlerFeeds(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFollow(s *state, cmd command) error {
+func handlerFollow(s *state, cmd command, user database.User) error {
 	if len(cmd.args) < 1 {
 		return fmt.Errorf("usage: follow <url>")
 	}
@@ -204,7 +204,7 @@ func handlerFollow(s *state, cmd command) error {
 	return nil
 }
 
-func handlerFollowing(s *state, cmd command) error {
+func handlerFollowing(s *state, cmd command, user database.User) error {
 	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
 	if err != nil {
 		return fmt.Errorf("user not found: %w", err)
@@ -223,6 +223,27 @@ func handlerFollowing(s *state, cmd command) error {
 	for _, f := range follows {
 		fmt.Printf("Name: %s\n", f.FeedName)
 	}
+	return nil
+}
+
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("usage: unfollow <url>")
+	}
+	feed, err := s.db.GetFeedByUrl(context.Background(), cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("can't find the feed %w", err)
+	}
+	unfollow := database.UnfollowUserParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	}
+
+	err = s.db.UnfollowUser(context.Background(), unfollow)
+	if err != nil {
+		return fmt.Errorf("can't unfollow %w", err)
+	}
+	fmt.Printf("Unfollowed from \"%s\"\n", feed.Name)
 	return nil
 }
 
