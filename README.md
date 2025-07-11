@@ -39,13 +39,12 @@ Gator — это CLI-приложение для агрегации RSS-лент
 - reset — удаляет всех пользователей (используется только для сброса/отладки)
 
 Пример использования:
-
-  gator register alice
-  gator login alice
-  gator addfeed "TechCrunch" https://techcrunch.com/feed/
-  gator follow https://techcrunch.com/feed/
-  gator agg 1m
-  gator browse 5
+- gator register alice
+- gator login alice
+- gator addfeed "TechCrunch" https://techcrunch.com/feed/
+- gator follow https://techcrunch.com/feed/
+- gator agg 1m
+- gator browse 5
 
 Команда agg запускает фоновый бесконечный цикл сбора фидов. Она не должна DOS-ить источники. Используй разумные интервалы, например, 1m или больше. Остановить выполнение можно через Ctrl+C.
 
