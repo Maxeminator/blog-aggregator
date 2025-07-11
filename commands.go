@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Maxeminator/blog-aggregator/internal/config"
@@ -105,13 +108,27 @@ func handlerUsers(s *state, cmd command, user database.User) error {
 }
 
 func handlerAgg(s *state, cmd command, user database.User) error {
-	ctx := context.Background()
-	feed, err := fetchFeed(ctx, "https://www.wagslane.dev/index.xml")
-	if err != nil {
-		return err
+	if len(cmd.args) < 1 {
+		return fmt.Errorf("usage: agg <duration>")
 	}
-	fmt.Printf("%+v\n", feed)
-	return nil
+
+	duration, err := time.ParseDuration(cmd.args[0])
+	if err != nil {
+		return fmt.Errorf("invalid duration: %w", err)
+	}
+
+	fmt.Printf("Collecting feeds every %s\n", duration)
+
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+
+	for {
+		err := handlerScrapeFeeds(s, cmd, user)
+		if err != nil {
+			fmt.Printf("Error scraping: %v\n", err)
+		}
+		<-ticker.C
+	}
 }
 
 func handlerAddfeed(s *state, cmd command, user database.User) error {
@@ -244,6 +261,99 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 		return fmt.Errorf("can't unfollow %w", err)
 	}
 	fmt.Printf("Unfollowed from \"%s\"\n", feed.Name)
+	return nil
+}
+
+func parseTime(dateStr string) (time.Time, error) {
+	formats := []string{
+		time.RFC1123,
+		time.RFC1123Z,
+		time.RFC3339,
+	}
+	var t time.Time
+	var err error
+	for _, layout := range formats {
+		t, err = time.Parse(layout, dateStr)
+		if err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("oculd not parse date %q: %v", dateStr, err)
+}
+
+func handlerScrapeFeeds(s *state, cmd command, user database.User) error {
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return fmt.Errorf("can't find feed to fetch %w", err)
+	}
+	err = s.db.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
+		LastFetchedAt: sql.NullTime{Time: time.Now(), Valid: true},
+		ID:            feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to mark feed as fetched: %w", err)
+	}
+
+	rssFeed, err := fetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		return fmt.Errorf("failed to fetch RSS feed: %w", err)
+	}
+
+	fmt.Printf("Fetched %d posts from feed: %s\n", len(rssFeed.Channel.Item), feed.Name)
+	for _, item := range rssFeed.Channel.Item {
+		published, err := parseTime(item.PubDate)
+		if err != nil {
+			log.Printf("can't parse date %q: %v", item.PubDate, err)
+			continue
+		}
+		_, err = s.db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: item.Description,
+			PublishedAt: published,
+			FeedID:      feed.ID,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "duplicate key") {
+				continue
+			}
+			log.Printf("failed to insert post: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func handlerBrowse(s *state, cmd command, user database.User) error {
+	limit := 2
+	if len(cmd.args) >= 1 {
+		parsedLimit, err := strconv.Atoi(cmd.args[0])
+		if err != nil {
+			return fmt.Errorf("invalid limit: %w", err)
+		}
+		limit = parsedLimit
+	}
+
+	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get posts: %w", err)
+	}
+
+	if len(posts) == 0 {
+		fmt.Println("no posts found.")
+		return nil
+	}
+
+	for _, post := range posts {
+		fmt.Printf("Title: %s\nUrl: %s\nPublished: %s\nFeed: %s\n\n", post.Title, post.Url, post.PublishedAt, post.FeedID)
+	}
+
 	return nil
 }
 
